@@ -1,6 +1,9 @@
-fastapi==0.115.6
-uvicorn==0.34.0
-sqlalchemy==2.0.36
+fastapi==0.139.0
+uvicorn==0.51.0
+sqlalchemy==2.0.51
 psycopg2-binary==2.9.10
-alembic==1.14.0
-python-dotenv==1.0.1
+alembic==1.18.5
+python-dotenv==1.2.2
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1
