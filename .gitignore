@@ -43,3 +43,5 @@ alembic/versions/*.pyc
 
 # Testing
 .pytest_cache/
+
+fases.txt

@@ -43,10 +43,15 @@ Este repositorio contiene el backend. El frontend (Flutter) vive fuera de este r
 
 ## Entorno virtual (venv) — regla obligatoria
 
-Este proyecto usa un entorno virtual en backend/venv. Antes de ejecutar cualquier `pip install`, es obligatorio:
+Este proyecto usa un entorno virtual en backend/venv. Cada llamada a una herramienta de terminal es una sesión nueva e independiente: activar el venv con `source venv/Scripts/activate` en un comando NO persiste para el siguiente comando.
 
-1. Activar el venv: `source venv/Scripts/activate` (Git Bash en Windows).
-2. Verificar que quedó activo corriendo: `python -c "import sys; print(sys.executable)"`.
-3. Confirmar que la ruta impresa está dentro de la carpeta `venv/`. Si no lo está, detente y avisa al usuario en vez de continuar instalando — nunca instales paquetes con el Python global del sistema.
+Por esto, nunca uses `python` o `pip` a secas, ni dependas de que el venv esté "activado". Usa siempre la ruta completa al ejecutable dentro del venv:
+
+- Para instalar paquetes: `venv/Scripts/python.exe -m pip install <paquete>`
+- Para correr Python: `venv/Scripts/python.exe archivo.py`
+- Para correr pytest: `venv/Scripts/python.exe -m pytest`
+- Para correr uvicorn: `venv/Scripts/python.exe -m uvicorn app.main:app`
+
+Antes de instalar cualquier paquete nuevo, verifica con `venv/Scripts/python.exe -c "import sys; print(sys.executable)"` que la ruta impresa está dentro de `venv/`. Si algún comando necesita el venv activo interactivamente (por ejemplo, un comando compuesto largo), actívalo y verifica DENTRO del mismo bloque de comando, nunca asumas que quedó activo de una llamada a otra.
 
 Cualquier paquete nuevo que se instale debe agregarse también a requirements.txt con su versión exacta (`==`), en el mismo turno en que se instala.
