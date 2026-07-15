@@ -24,9 +24,20 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_
 
 @pytest.fixture(scope="session")
 def db_session():
-    """Create and drop all tables for tests."""
-    # Create all tables
-    Base.metadata.create_all(bind=test_engine)
+    """Create all tables for tests using Alembic migrations."""
+    import subprocess
+    import sys
+    import os
+
+    # Apply migrations using subprocess with correct DATABASE_URL
+    env = os.environ.copy()
+    env['DATABASE_URL'] = TEST_DATABASE_URL
+    result = subprocess.run(
+        [sys.executable, '-m', 'alembic', 'upgrade', 'head'],
+        check=True,
+        env=env,
+        cwd=os.getcwd()
+    )
 
     # Create a session
     session = TestingSessionLocal()
@@ -34,20 +45,25 @@ def db_session():
         yield session
     finally:
         session.close()
-        # Drop all tables after tests
-        Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture(scope="function")
 def test_db(db_session):
-    """Provide a clean database session for each test."""
-    # Create a new session for this test
-    session = TestingSessionLocal()
+    """Provide a clean database session for each test with transaction isolation."""
+    # Begin a nested transaction for this test
+    connection = db_session.connection()
+    transaction = connection.begin_nested()
+
+    # Add a savepoint for rollback
+    db_session.begin_nested()
+
     try:
-        yield session
+        yield db_session
     finally:
-        session.rollback()
-        session.close()
+        # Rollback the nested transaction to clean up test data
+        db_session.rollback()
+        transaction.rollback()
+        connection.close()
 
 
 @pytest.fixture(scope="function")

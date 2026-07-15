@@ -45,3 +45,4 @@ alembic/versions/*.pyc
 .pytest_cache/
 
 fases.txt
+CLAUDE.md
