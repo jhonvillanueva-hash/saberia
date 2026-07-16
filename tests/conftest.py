@@ -50,20 +50,31 @@ def db_session():
 @pytest.fixture(scope="function")
 def test_db(db_session):
     """Provide a clean database session for each test with transaction isolation."""
-    # Begin a nested transaction for this test
-    connection = db_session.connection()
-    transaction = connection.begin_nested()
+    # Delete all data from all tables to ensure clean state BEFORE the test
+    conn = test_engine.connect()
+    try:
+        # Get all table names (except alembic_version)
+        tables = ['users', 'auth_providers', 'books', 'user_monthly_limits',
+                 'chapters', 'processing_jobs', 'chapter_audios', 'listening_progress']
 
-    # Add a savepoint for rollback
-    db_session.begin_nested()
+        for table in tables:
+            try:
+                conn.execute(text(f'TRUNCATE TABLE {table} CASCADE'))
+            except Exception:
+                pass
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Create a new session for this test
+    test_session = TestingSessionLocal()
 
     try:
-        yield db_session
+        yield test_session
     finally:
-        # Rollback the nested transaction to clean up test data
-        db_session.rollback()
-        transaction.rollback()
-        connection.close()
+        # Rollback and close the session
+        test_session.rollback()
+        test_session.close()
 
 
 @pytest.fixture(scope="function")

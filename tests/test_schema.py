@@ -15,7 +15,7 @@ def test_tables_exist(db_session):
     assert True
 
 
-def test_user_insertion(db_session):
+def test_user_insertion(test_db):
     """Test basic user insertion."""
     user = User(
         id=uuid.uuid4(),
@@ -23,17 +23,17 @@ def test_user_insertion(db_session):
         display_name="Test User",
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    test_db.add(user)
+    test_db.commit()
 
     # Verify user was inserted
-    fetched_user = db_session.get(User, user.id)
+    fetched_user = test_db.get(User, user.id)
     assert fetched_user is not None
     assert fetched_user.email == "test@example.com"
     assert fetched_user.display_name == "Test User"
 
 
-def test_book_with_chapter_insertion(db_session):
+def test_book_with_chapter_insertion(test_db):
     """Test inserting a book with a chapter."""
     # Create user first
     user = User(
@@ -42,8 +42,8 @@ def test_book_with_chapter_insertion(db_session):
         display_name="Book Test User",
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    test_db.add(user)
+    test_db.commit()
 
     # Create book
     book = Book(
@@ -57,8 +57,8 @@ def test_book_with_chapter_insertion(db_session):
         file_size_bytes=1024,
         chapter_count=1
     )
-    db_session.add(book)
-    db_session.commit()
+    test_db.add(book)
+    test_db.commit()
 
     # Create chapter
     chapter = Chapter(
@@ -70,20 +70,20 @@ def test_book_with_chapter_insertion(db_session):
         extracted_text="This is the extracted text.",
         word_count=5
     )
-    db_session.add(chapter)
-    db_session.commit()
+    test_db.add(chapter)
+    test_db.commit()
 
     # Verify all were inserted
-    fetched_book = db_session.get(Book, book.id)
+    fetched_book = test_db.get(Book, book.id)
     assert fetched_book is not None
     assert fetched_book.title == "Test Book"
 
-    fetched_chapter = db_session.get(Chapter, chapter.id)
+    fetched_chapter = test_db.get(Chapter, chapter.id)
     assert fetched_chapter is not None
     assert fetched_chapter.title == "Chapter 1"
 
 
-def test_unique_constraint_auth_provider(db_session):
+def test_unique_constraint_auth_provider(test_db):
     """Test that unique constraint on auth_providers works."""
     user = User(
         id=uuid.uuid4(),
@@ -91,8 +91,8 @@ def test_unique_constraint_auth_provider(db_session):
         display_name="Unique User",
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    test_db.add(user)
+    test_db.commit()
 
     # First auth provider
     auth1 = AuthProvider(
@@ -101,8 +101,8 @@ def test_unique_constraint_auth_provider(db_session):
         provider="google",
         provider_email="test@gmail.com"
     )
-    db_session.add(auth1)
-    db_session.commit()
+    test_db.add(auth1)
+    test_db.commit()
 
     # Try to insert duplicate (same user_id, provider)
     auth2 = AuthProvider(
@@ -111,13 +111,13 @@ def test_unique_constraint_auth_provider(db_session):
         provider="google",
         provider_email="test2@gmail.com"
     )
-    db_session.add(auth2)
+    test_db.add(auth2)
 
     with pytest.raises(IntegrityError):
-        db_session.commit()
+        test_db.commit()
 
 
-def test_check_constraint_month_range(db_session):
+def test_check_constraint_month_range(test_db):
     """Test that month must be between 1 and 12."""
     user = User(
         id=uuid.uuid4(),
@@ -125,8 +125,8 @@ def test_check_constraint_month_range(db_session):
         display_name="Check User",
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    test_db.add(user)
+    test_db.commit()
 
     # Try to insert with month=13 (invalid)
     limit = UserMonthlyLimit(
@@ -137,13 +137,13 @@ def test_check_constraint_month_range(db_session):
         conversions_used=0,
         conversions_limit=3
     )
-    db_session.add(limit)
+    test_db.add(limit)
 
     with pytest.raises(IntegrityError):
-        db_session.commit()
+        test_db.commit()
 
 
-def test_updated_at_trigger(db_session):
+def test_updated_at_trigger(test_db):
     """Test that updated_at is automatically updated on row update."""
     user = User(
         id=uuid.uuid4(),
@@ -151,21 +151,21 @@ def test_updated_at_trigger(db_session):
         display_name="Trigger User",
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
+    test_db.add(user)
+    test_db.commit()
 
     # Get the initial updated_at
     initial_updated_at = user.updated_at
 
     # Wait a moment to ensure time difference
     import time
-    time.sleep(0.1)
+    time.sleep(1)  # Increased from 0.1 to 1 second
 
     # Update the user
     user.display_name = "Updated Trigger User"
-    db_session.commit()
+    test_db.commit()
 
     # Refresh and check updated_at changed
-    db_session.refresh(user)
+    test_db.refresh(user)
     assert user.updated_at > initial_updated_at
     assert user.display_name == "Updated Trigger User"
