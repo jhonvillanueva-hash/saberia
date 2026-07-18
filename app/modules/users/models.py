@@ -24,6 +24,7 @@ class User(Base):
     )
 
     auth_providers = relationship("AuthProvider", back_populates="user", cascade="all, delete-orphan")
+    monthly_limits = relationship("UserMonthlyLimit", back_populates="user", cascade="all, delete-orphan")
 
 
 class UserMonthlyLimit(Base):
@@ -45,3 +46,5 @@ class UserMonthlyLimit(Base):
         CheckConstraint("conversions_limit > 0", name="_conversions_limit_positive"),
         CheckConstraint("conversions_used <= conversions_limit", name="chk_conversions_not_exceeded"),
     )
+
+    user = relationship("User", back_populates="monthly_limits")
