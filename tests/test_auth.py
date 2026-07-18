@@ -14,7 +14,7 @@ from app.modules.auth.security import hash_password, create_access_token, TokenE
 from app.modules.auth.schemas import TokenResponse
 
 
-def test_register_successful(client: Session):
+def test_register_successful(client: Session, test_db: Session):
     """Test successful user registration."""
     register_data = {
         "email": "test@example.com",
@@ -28,102 +28,87 @@ def test_register_successful(client: Session):
     assert "access_token" in response.json()
 
     # Verify user and auth provider were created
-    from app.core.database import get_db
-    db = next(get_db())
-    try:
-        user = db.query(User).filter(User.email == register_data["email"]).first()
-        assert user is not None
-        assert user.display_name == register_data["display_name"]
+    user = test_db.query(User).filter(User.email == register_data["email"]).first()
+    assert user is not None
+    assert user.display_name == register_data["display_name"]
 
-        auth_provider = db.query(AuthProvider).filter(
-            AuthProvider.user_id == user.id,
-            AuthProvider.provider == "email"
-        ).first()
-        assert auth_provider is not None
-        assert auth_provider.provider_email == register_data["email"]
+    auth_provider = test_db.query(AuthProvider).filter(
+        AuthProvider.user_id == user.id,
+        AuthProvider.provider == "email"
+    ).first()
+    assert auth_provider is not None
+    assert auth_provider.provider_email == register_data["email"]
 
-        # Verify password hash is not plain text
-        assert auth_provider.password_hash != register_data["password"]
-        assert auth_provider.password_hash.startswith("$2b$")  # bcrypt hash format
-    finally:
-        db.close()
+    # Verify password hash is not plain text
+    assert auth_provider.password_hash != register_data["password"]
+    assert auth_provider.password_hash.startswith("$2b$")  # bcrypt hash format
 
 
-def test_register_duplicate_email(client: Session):
+def test_register_duplicate_email(client: Session, test_db: Session):
     """Test registration with duplicate email."""
     # Create existing user
-    from app.core.database import get_db
-    db = next(get_db())
-    try:
-        existing_user = User(
-            id=uuid.uuid4(),
-            email="existing@example.com",
-            display_name="Existing User",
-            is_active=True
-        )
-        db.add(existing_user)
+    existing_user = User(
+        id=uuid.uuid4(),
+        email="existing@example.com",
+        display_name="Existing User",
+        is_active=True
+    )
+    test_db.add(existing_user)
 
-        existing_auth = AuthProvider(
-            id=uuid.uuid4(),
-            user_id=existing_user.id,
-            provider="email",
-            provider_email="existing@example.com",
-            password_hash=hash_password("password"),
-            is_verified=False
-        )
-        db.add(existing_auth)
-        db.commit()
+    existing_auth = AuthProvider(
+        id=uuid.uuid4(),
+        user_id=existing_user.id,
+        provider="email",
+        provider_email="existing@example.com",
+        password_hash=hash_password("password"),
+        is_verified=False
+    )
+    test_db.add(existing_auth)
+    test_db.commit()
 
-        # Try to register with same email
-        register_data = {
-            "email": "existing@example.com",
-            "password": "password123",
-            "display_name": "New User"
-        }
+    # Try to register with same email
+    register_data = {
+        "email": "existing@example.com",
+        "password": "password123",
+        "display_name": "New User"
+    }
 
-        response = client.post("/auth/register", json=register_data)
-    finally:
-        db.close()
+    response = client.post("/auth/register", json=register_data)
 
     assert response.status_code == status.HTTP_409_CONFLICT
     assert "already registered" in response.json()["detail"]
 
 
-def test_login_successful(client: Session):
+def test_login_successful(client: Session, test_db: Session):
     """Test successful login."""
     # Create user
-    from app.core.database import get_db
-    db = next(get_db())
-    try:
-        password = "password123"
-        user = User(
-            id=uuid.uuid4(),
-            email="login@example.com",
-            display_name="Login User",
-            is_active=True
-        )
-        db.add(user)
+    password = "password123"
+    user = User(
+        id=uuid.uuid4(),
+        email="login@example.com",
+        display_name="Login User",
+        is_active=True
+    )
+    test_db.add(user)
 
-        auth_provider = AuthProvider(
-            id=uuid.uuid4(),
-            user_id=user.id,
-            provider="email",
-            provider_email="login@example.com",
-            password_hash=hash_password(password),
-            is_verified=False
-        )
-        db.add(auth_provider)
-        db.commit()
+    auth_provider = AuthProvider(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        provider="email",
+        provider_email="login@example.com",
+        password_hash=hash_password(password),
+        is_verified=False
+    )
+    test_db.add(auth_provider)
+    test_db.commit()
 
-        # Login
-        login_data = {
-            "email": "login@example.com",
-            "password": password
-        }
+    # Login
+    login_data = {
+        "email": "login@example.com",
+        "password": password
+    }
 
-        response = client.post("/auth/login", json=login_data)
-    finally:
-        db.close()
+    response = client.post("/auth/login", json=login_data)
 
     assert response.status_code == status.HTTP_200_OK
     assert "access_token" in response.json()
@@ -134,7 +119,7 @@ def test_login_successful(client: Session):
     assert decoded["sub"] == str(user.id)
 
 
-def test_login_invalid_credentials(client: Session):
+def test_login_invalid_credentials(client: Session, test_db: Session):
     """Test login with invalid credentials."""
     # Create user
     user = User(
@@ -143,7 +128,7 @@ def test_login_invalid_credentials(client: Session):
         display_name="Login User",
         is_active=True
     )
-    client.add(user)
+    test_db.add(user)
 
     auth_provider = AuthProvider(
         id=uuid.uuid4(),
@@ -153,8 +138,8 @@ def test_login_invalid_credentials(client: Session):
         password_hash=hash_password("correctpassword"),
         is_verified=False
     )
-    client.add(auth_provider)
-    client.commit()
+    test_db.add(auth_provider)
+    test_db.commit()
 
     # Try login with wrong password
     login_data = {
@@ -162,7 +147,7 @@ def test_login_invalid_credentials(client: Session):
         "password": "wrongpassword"
     }
 
-    response = client.client.post("/auth/login", json=login_data)
+    response = client.post("/auth/login", json=login_data)
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert "Invalid email or password" in response.json()["detail"]
@@ -173,7 +158,7 @@ def test_login_invalid_credentials(client: Session):
         "password": "password"
     }
 
-    response = client.client.post("/auth/login", json=login_data)
+    response = client.post("/auth/login", json=login_data)
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert "Invalid email or password" in response.json()["detail"]
@@ -185,7 +170,7 @@ def test_get_me_unauthorized(client):
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-def test_get_me_with_valid_token(client: Session):
+def test_get_me_with_valid_token(client: Session, test_db: Session):
     """Test /me endpoint with valid token."""
     # Create user
     user = User(
@@ -195,14 +180,14 @@ def test_get_me_with_valid_token(client: Session):
         is_active=True,
         created_at=datetime.now(timezone.utc)
     )
-    client.add(user)
-    client.commit()
+    test_db.add(user)
+    test_db.commit()
 
     # Generate token
     access_token = create_access_token(user.id)
 
     # Call /me with token
-    response = client.client.get(
+    response = client.get(
         "/auth/me",
         headers={"Authorization": f"Bearer {access_token}"}
     )
@@ -213,7 +198,7 @@ def test_get_me_with_valid_token(client: Session):
     assert response.json()["display_name"] == user.display_name
 
 
-def test_get_me_with_expired_token(client: Session):
+def test_get_me_with_expired_token(client: Session, test_db: Session):
     """Test /me endpoint with expired token."""
     # Create user
     user = User(
@@ -222,8 +207,8 @@ def test_get_me_with_expired_token(client: Session):
         display_name="Expired User",
         is_active=True
     )
-    client.add(user)
-    client.commit()
+    test_db.add(user)
+    test_db.commit()
 
     # Generate expired token
     expire = datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -235,7 +220,7 @@ def test_get_me_with_expired_token(client: Session):
     expired_token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
     # Call /me with expired token
-    response = client.client.get(
+    response = client.get(
         "/auth/me",
         headers={"Authorization": f"Bearer {expired_token}"}
     )
@@ -247,7 +232,7 @@ def test_get_me_with_expired_token(client: Session):
 def test_get_me_with_invalid_token(client: Session):
     """Test /me endpoint with invalid token."""
     # Call /me with invalid token
-    response = client.client.get(
+    response = client.get(
         "/auth/me",
         headers={"Authorization": "Bearer invalidtoken"}
     )
@@ -256,7 +241,7 @@ def test_get_me_with_invalid_token(client: Session):
     assert "Invalid token" in response.json()["detail"]
 
 
-def test_google_login_new_user(client: Session):
+def test_google_login_new_user(client: Session, test_db: Session):
     """Test Google login for new user."""
     google_token_data = {
         "sub": "123456789",
@@ -267,7 +252,7 @@ def test_google_login_new_user(client: Session):
     with patch("google.oauth2.id_token.verify_oauth2_token") as mock_verify:
         mock_verify.return_value = google_token_data
 
-        response = client.client.post(
+        response = client.post(
             "/auth/login/google",
             json={"id_token": "fake-google-token"}
         )
@@ -276,11 +261,11 @@ def test_google_login_new_user(client: Session):
     assert "access_token" in response.json()
 
     # Verify user and auth provider were created
-    user = client.query(User).filter(User.email == google_token_data["email"]).first()
+    user = test_db.query(User).filter(User.email == google_token_data["email"]).first()
     assert user is not None
     assert user.display_name == google_token_data["name"]
 
-    auth_provider = client.query(AuthProvider).filter(
+    auth_provider = test_db.query(AuthProvider).filter(
         AuthProvider.user_id == user.id,
         AuthProvider.provider == "google"
     ).first()
@@ -289,7 +274,7 @@ def test_google_login_new_user(client: Session):
     assert auth_provider.is_verified is True
 
 
-def test_google_login_existing_user(client: Session):
+def test_google_login_existing_user(client: Session, test_db: Session):
     """Test Google login for existing user."""
     # Create existing Google user
     user = User(
@@ -298,7 +283,7 @@ def test_google_login_existing_user(client: Session):
         display_name="Google User",
         is_active=True
     )
-    client.add(user)
+    test_db.add(user)
 
     auth_provider = AuthProvider(
         id=uuid.uuid4(),
@@ -308,8 +293,8 @@ def test_google_login_existing_user(client: Session):
         provider_email="google@example.com",
         is_verified=True
     )
-    client.add(auth_provider)
-    client.commit()
+    test_db.add(auth_provider)
+    test_db.commit()
 
     google_token_data = {
         "sub": "123456789",
@@ -320,7 +305,7 @@ def test_google_login_existing_user(client: Session):
     with patch("google.oauth2.id_token.verify_oauth2_token") as mock_verify:
         mock_verify.return_value = google_token_data
 
-        response = client.client.post(
+        response = client.post(
             "/auth/login/google",
             json={"id_token": "fake-google-token"}
         )
@@ -334,7 +319,7 @@ def test_google_login_existing_user(client: Session):
     assert decoded["sub"] == str(user.id)
 
 
-def test_google_login_email_in_use(client: Session):
+def test_google_login_email_in_use(client: Session, test_db: Session):
     """Test Google login with email already in use by another provider."""
     # Create existing email user
     user = User(
@@ -343,7 +328,7 @@ def test_google_login_email_in_use(client: Session):
         display_name="Email User",
         is_active=True
     )
-    client.add(user)
+    test_db.add(user)
 
     auth_provider = AuthProvider(
         id=uuid.uuid4(),
@@ -353,8 +338,8 @@ def test_google_login_email_in_use(client: Session):
         password_hash=hash_password("password"),
         is_verified=False
     )
-    client.add(auth_provider)
-    client.commit()
+    test_db.add(auth_provider)
+    test_db.commit()
 
     google_token_data = {
         "sub": "123456789",
@@ -365,7 +350,7 @@ def test_google_login_email_in_use(client: Session):
     with patch("google.oauth2.id_token.verify_oauth2_token") as mock_verify:
         mock_verify.return_value = google_token_data
 
-        response = client.client.post(
+        response = client.post(
             "/auth/login/google",
             json={"id_token": "fake-google-token"}
         )
@@ -374,7 +359,7 @@ def test_google_login_email_in_use(client: Session):
     assert "another provider" in response.json()["detail"]
 
     # Verify no new user was created
-    google_user = client.query(User).filter(
+    google_user = test_db.query(User).filter(
         User.email == google_token_data["email"],
         User.id != user.id
     ).first()

@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Boolean, DateTime, func, UniqueConstraint, CheckConstraint, ForeignKey, SmallInteger
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import expression
+from sqlalchemy.orm import relationship
 import uuid
 
 from app.core.database import Base
@@ -21,6 +22,8 @@ class User(Base):
     __table_args__ = (
         CheckConstraint("display_name != ''", name="_display_name_not_empty"),
     )
+
+    auth_providers = relationship("AuthProvider", back_populates="user", cascade="all, delete-orphan")
 
 
 class UserMonthlyLimit(Base):

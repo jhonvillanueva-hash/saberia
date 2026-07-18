@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Boolean, DateTime, func, UniqueConstraint, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 import uuid
 
 from app.core.database import Base
@@ -24,3 +25,5 @@ class AuthProvider(Base):
         UniqueConstraint("provider", "provider_user_id", name="_provider_user_id_uc"),
         UniqueConstraint("provider", "provider_email", name="_provider_email_uc"),
     )
+
+    user = relationship("User", back_populates="auth_providers")
