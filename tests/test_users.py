@@ -57,7 +57,6 @@ def test_get_monthly_limits_first_time(client: Session, test_db: Session):
 
 
 def test_get_monthly_limits_reuse_existing(client: Session, test_db: Session):
-    """Test /users/me/limits reuses existing limit row."""
     # Create user with existing limit
     user = User(
         id=uuid.uuid4(),
@@ -101,6 +100,47 @@ def test_get_monthly_limits_reuse_existing(client: Session, test_db: Session):
         all()
     assert len(limit_rows) == 1
     assert limit_rows[0].conversions_used == 1
+
+
+def test_get_monthly_limits_persistence_with_fresh_session(client: Session):
+    # Create user without existing limit
+    user_id = uuid.uuid4()
+    user = User(
+        id=user_id,
+        email="freshsession@example.com",
+        display_name="Fresh Session User",
+        is_active=True
+    )
+    from tests.conftest import TestingSessionLocal
+    fresh_session = TestingSessionLocal()
+    try:
+        fresh_session.add(user)
+        fresh_session.commit()
+    finally:
+        fresh_session.close()
+
+    # Generate token
+    access_token = create_access_token(user_id)
+
+    # Call endpoint to create limit row
+    response = client.get(
+        "/users/me/limits",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+
+    # Verify persistence with a completely fresh session (simulates production behavior)
+    fresh_session = TestingSessionLocal()
+    try:
+        limit_row = fresh_session.query(UserMonthlyLimit).\
+            filter(UserMonthlyLimit.user_id == user_id).\
+            first()
+        assert limit_row is not None
+        assert limit_row.conversions_used == 0
+        assert limit_row.conversions_limit == 3
+    finally:
+        fresh_session.close()
 
 
 def test_consume_conversion_slot_success(test_db: Session):
@@ -223,3 +263,61 @@ def test_concurrent_consumption(test_db: Session):
         filter(UserMonthlyLimit.user_id == user.id).\
         first()
     assert final_row.conversions_used == 1  # Did not exceed limit
+
+
+def test_concurrent_creation_and_consumption(test_db: Session):
+    # Create user WITHOUT existing limit (this is the key difference)
+    user = User(
+        id=uuid.uuid4(),
+        email="concurrent_creation@example.com",
+        display_name="Concurrent Creation User",
+        is_active=True
+    )
+    test_db.add(user)
+    test_db.commit()
+
+    # Track results
+    results = []
+
+    def consume_slot():
+        try:
+            # Each thread gets its own session from the test engine
+            from tests.conftest import TestingSessionLocal
+            db = TestingSessionLocal()
+            try:
+                limit = consume_conversion_slot(db, user.id)
+                results.append(limit.conversions_used)
+            finally:
+                db.close()
+        except MonthlyLimitExceededError as e:
+            results.append(f"error: {str(e)}")
+
+    # Create barrier to synchronize thread start
+    barrier = threading.Barrier(2)
+
+    def thread_target():
+        barrier.wait()  # Wait for both threads to be ready
+        consume_slot()
+
+    # Start two threads
+    threads = [
+        threading.Thread(target=thread_target),
+        threading.Thread(target=thread_target)
+    ]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Both should succeed (limit is 3, only consuming 2)
+    assert len(results) == 2
+    assert all(isinstance(r, int) for r in results)
+    assert sum(results) == 3  # 1 + 2 = 3 total consumed
+
+    # Verify only one row was created (no duplicate rows)
+    limit_rows = test_db.query(UserMonthlyLimit).\
+        filter(UserMonthlyLimit.user_id == user.id).\
+        all()
+    assert len(limit_rows) == 1
+    assert limit_rows[0].conversions_used == 2  # Consistent final state

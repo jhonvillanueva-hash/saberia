@@ -18,13 +18,12 @@ def get_monthly_limits(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get current user's monthly conversion limits."""
     now = datetime.now(timezone.utc)
     year = now.year
     month = now.month
 
-    # Get or create limit (without consuming a slot)
     limit_row = get_or_create_monthly_limit(db, current_user.id, year, month)
+    db.commit()
 
     return MonthlyUsageResponse(
         year=limit_row.year,

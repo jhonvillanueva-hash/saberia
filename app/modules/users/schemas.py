@@ -2,7 +2,6 @@ from pydantic import BaseModel
 
 
 class MonthlyUsageResponse(BaseModel):
-    """Response schema for monthly conversion usage."""
     year: int
     month: int
     conversions_used: int
