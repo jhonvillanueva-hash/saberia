@@ -2,6 +2,7 @@ import pytest
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
+from sqlalchemy import event
 
 from fastapi import status, UploadFile
 from sqlalchemy.orm import Session
@@ -310,5 +311,41 @@ def test_delete_nonexistent_book(client: Session, test_db: Session):
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_r2_cleanup_on_db_failure(client, test_db, mock_storage):
+    mock_upload, mock_delete = mock_storage
+
+    user = User(
+        id=uuid.uuid4(),
+        email="cleanup@example.com",
+        display_name="Cleanup User",
+        is_active=True
+    )
+    test_db.add(user)
+    test_db.commit()
+
+    access_token = create_access_token(user.id)
+    pdf_bytes = generate_valid_pdf()
+
+    def fail_on_book_flush(session, flush_context, instances):
+        for obj in session.new:
+            if isinstance(obj, Book):
+                raise Exception("simulated db failure")
+
+    event.listen(test_db, "before_flush", fail_on_book_flush)
+    try:
+        with pytest.raises(Exception, match="simulated db failure"):
+            client.post(
+                "/books",
+                files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+    finally:
+        event.remove(test_db, "before_flush", fail_on_book_flush)
+
+    mock_upload.assert_called_once()
+    uploaded_key = mock_upload.call_args[0][1]
+    mock_delete.assert_called_once_with(uploaded_key)
 
 
