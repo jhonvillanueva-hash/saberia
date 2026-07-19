@@ -46,4 +46,5 @@ alembic/versions/*.pyc
 
 fases.txt
 google.txt
+server.txt
 CLAUDE.md

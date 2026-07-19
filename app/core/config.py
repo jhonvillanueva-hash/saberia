@@ -19,6 +19,13 @@ class Settings:
     # Google OAuth Configuration
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID")
 
+    # Cloudflare R2 Configuration
+    R2_ACCOUNT_ID: str = os.getenv("R2_ACCOUNT_ID", "")
+    R2_ACCESS_KEY_ID: str = os.getenv("R2_ACCESS_KEY_ID", "")
+    R2_SECRET_ACCESS_KEY: str = os.getenv("R2_SECRET_ACCESS_KEY", "")
+    R2_BUCKET_NAME: str = os.getenv("R2_BUCKET_NAME", "")
+    R2_ENDPOINT_URL: str = os.getenv("R2_ENDPOINT_URL", "")
+
     def __init__(self):
         if not self._jwt_secret_key or self._jwt_secret_key.strip() == "":
             raise ValueError(

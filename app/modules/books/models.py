@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, BigInteger, Text, func, CheckConstraint, UniqueConstraint, ForeignKey, Enum, SmallInteger
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import expression
+from sqlalchemy.orm import relationship
 import uuid
 
 from app.core.database import Base
@@ -30,6 +31,8 @@ class Book(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="books")
 
     __table_args__ = (
         CheckConstraint(

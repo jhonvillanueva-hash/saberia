@@ -25,6 +25,7 @@ class User(Base):
 
     auth_providers = relationship("AuthProvider", back_populates="user", cascade="all, delete-orphan")
     monthly_limits = relationship("UserMonthlyLimit", back_populates="user", cascade="all, delete-orphan")
+    books = relationship("Book", back_populates="user")
 
 
 class UserMonthlyLimit(Base):
