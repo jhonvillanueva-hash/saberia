@@ -53,8 +53,9 @@ def create_book(db: Session, user: User, file_bytes: bytes, original_filename: s
         db.commit()
         return book
     except Exception:
+        db.rollback()
         try:
             delete_file(key)
-        except:
+        except Exception:
             pass
         raise
