@@ -62,3 +62,8 @@ def consume_conversion_slot(db: Session, user_id: UUID) -> UserMonthlyLimit:
     db.commit()
 
     return limit_row
+
+
+def get_current_year_month():
+    now = datetime.now(timezone.utc)
+    return now.year, now.month

@@ -10,6 +10,8 @@ from app.modules.books.models import Book
 from app.modules.books.schemas import BookResponse
 from app.modules.books.service import create_book, MonthlyLimitExceededError
 from app.modules.auth.dependencies import get_current_user
+from app.shared.storage import delete_file
+from app.shared.enums import BookStatus
 
 
 router = APIRouter(prefix="/books", tags=["books"])
@@ -37,6 +39,11 @@ async def upload_book(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Monthly conversion limit reached"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
 
 
@@ -87,5 +94,11 @@ def delete_book(
             detail="Book not found"
         )
 
+    try:
+        delete_file(book.original_file_r2_path)
+    except Exception:
+        pass
+
     book.deleted_at = datetime.now(timezone.utc)
+    book.status = BookStatus.deleted
     db.commit()

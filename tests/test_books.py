@@ -7,10 +7,11 @@ from sqlalchemy import event
 from fastapi import status, UploadFile
 from sqlalchemy.orm import Session
 
-from app.modules.users.models import User
+from app.modules.users.models import User, UserMonthlyLimit
 from app.modules.books.models import Book
 from app.modules.books.service import create_book, MonthlyLimitExceededError
 from app.modules.auth.security import create_access_token
+from app.shared.enums import BookStatus
 
 
 @pytest.fixture
@@ -19,7 +20,8 @@ def mock_storage(monkeypatch):
     mock_delete = MagicMock()
 
     with patch('app.modules.books.service.upload_file', mock_upload), \
-         patch('app.modules.books.service.delete_file', mock_delete):
+         patch('app.modules.books.service.delete_file', mock_delete), \
+         patch('app.modules.books.router.delete_file', mock_delete):
         yield mock_upload, mock_delete
 
 
@@ -291,6 +293,7 @@ def test_delete_book(client: Session, test_db: Session, mock_storage):
     deleted_book = test_db.query(Book).filter(Book.id == book_id).first()
     assert deleted_book is not None
     assert deleted_book.deleted_at is not None
+    assert deleted_book.status == BookStatus.deleted
 
 
 def test_delete_nonexistent_book(client: Session, test_db: Session):
@@ -335,17 +338,81 @@ def test_r2_cleanup_on_db_failure(client, test_db, mock_storage):
 
     event.listen(test_db, "before_flush", fail_on_book_flush)
     try:
-        with pytest.raises(Exception, match="simulated db failure"):
-            client.post(
-                "/books",
-                files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
+        response = client.post(
+            "/books",
+            files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
     finally:
         event.remove(test_db, "before_flush", fail_on_book_flush)
 
+    assert response.status_code == 500
     mock_upload.assert_called_once()
     uploaded_key = mock_upload.call_args[0][1]
+    mock_delete.assert_called_once_with(uploaded_key)
+
+
+def test_upload_failure_does_not_consume_slot(client: Session, test_db: Session, mock_storage):
+    mock_upload, mock_delete = mock_storage
+    mock_upload.side_effect = Exception("R2 down")
+
+    user = User(
+        id=uuid.uuid4(),
+        email="failure@example.com",
+        display_name="Failure User",
+        is_active=True
+    )
+    test_db.add(user)
+    test_db.commit()
+
+    access_token = create_access_token(user.id)
+    pdf_bytes = generate_valid_pdf()
+
+    response = client.post(
+        "/books",
+        files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    assert response.status_code == 500
+
+    limit_row = test_db.query(UserMonthlyLimit).\
+        filter(UserMonthlyLimit.user_id == user.id).\
+        first()
+    assert limit_row is not None
+    assert limit_row.conversions_used == 0
+
+
+def test_delete_book_removes_r2_file(client: Session, test_db: Session, mock_storage):
+    mock_upload, mock_delete = mock_storage
+
+    user = User(
+        id=uuid.uuid4(),
+        email="delete_r2@example.com",
+        display_name="Delete R2 User",
+        is_active=True
+    )
+    test_db.add(user)
+    test_db.commit()
+
+    access_token = create_access_token(user.id)
+    pdf_bytes = generate_valid_pdf()
+
+    upload_response = client.post(
+        "/books",
+        files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    book_id = upload_response.json()["id"]
+    uploaded_key = mock_upload.call_args[0][1]
+
+    delete_response = client.delete(
+        f"/books/{book_id}",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
     mock_delete.assert_called_once_with(uploaded_key)
 
 
