@@ -24,11 +24,29 @@ async def upload_book(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    file_bytes = await file.read()
     original_filename = file.filename
 
     if not title:
         title = original_filename.rsplit('.', 1)[0] if '.' in original_filename else original_filename
+
+    MAX_FILE_SIZE = 60 * 1024 * 1024
+    chunk_size = 8192
+    chunks = []
+    total_size = 0
+
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="File exceeds maximum allowed size"
+            )
+        chunks.append(chunk)
+
+    file_bytes = b"".join(chunks)
 
     try:
         book = create_book(db, current_user, file_bytes, original_filename, title)

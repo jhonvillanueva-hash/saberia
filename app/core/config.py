@@ -34,5 +34,22 @@ class Settings:
             )
         self.JWT_SECRET_KEY = self._jwt_secret_key
 
+        missing_r2 = [
+            name for name in [
+                "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+                "R2_BUCKET_NAME", "R2_ENDPOINT_URL"
+            ]
+            if not os.getenv(name)
+        ]
+        if missing_r2:
+            raise ValueError(
+                f"Cloudflare R2 configuration is incomplete. Missing: {', '.join(missing_r2)}"
+            )
+
+        if not os.getenv("GOOGLE_CLIENT_ID"):
+            raise ValueError(
+                "GOOGLE_CLIENT_ID is not set. Google OAuth login will not work."
+            )
+
 
 settings = Settings()

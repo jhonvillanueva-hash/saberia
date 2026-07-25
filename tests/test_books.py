@@ -416,3 +416,89 @@ def test_delete_book_removes_r2_file(client: Session, test_db: Session, mock_sto
     mock_delete.assert_called_once_with(uploaded_key)
 
 
+def test_config_validates_r2_variables():
+    from app.core.config import Settings
+    import os
+
+    # Save original values
+    original_r2_vars = {
+        'R2_ACCOUNT_ID': os.getenv('R2_ACCOUNT_ID'),
+        'R2_ACCESS_KEY_ID': os.getenv('R2_ACCESS_KEY_ID'),
+        'R2_SECRET_ACCESS_KEY': os.getenv('R2_SECRET_ACCESS_KEY'),
+        'R2_BUCKET_NAME': os.getenv('R2_BUCKET_NAME'),
+        'R2_ENDPOINT_URL': os.getenv('R2_ENDPOINT_URL')
+    }
+
+    # Clear R2 variables
+    for var in original_r2_vars.keys():
+        if var in os.environ:
+            del os.environ[var]
+
+    try:
+        with pytest.raises(ValueError) as exc_info:
+            Settings()
+
+        error_msg = str(exc_info.value)
+        assert "Cloudflare R2 configuration is incomplete" in error_msg
+        assert "R2_ACCOUNT_ID" in error_msg
+        assert "R2_ACCESS_KEY_ID" in error_msg
+        assert "R2_SECRET_ACCESS_KEY" in error_msg
+        assert "R2_BUCKET_NAME" in error_msg
+        assert "R2_ENDPOINT_URL" in error_msg
+    finally:
+        # Restore original values
+        for var, value in original_r2_vars.items():
+            if value is not None:
+                os.environ[var] = value
+
+
+def test_config_validates_google_client_id():
+    from app.core.config import Settings
+    import os
+
+    # Save original value
+    original_google_client_id = os.getenv('GOOGLE_CLIENT_ID')
+
+    # Clear GOOGLE_CLIENT_ID
+    if 'GOOGLE_CLIENT_ID' in os.environ:
+        del os.environ['GOOGLE_CLIENT_ID']
+
+    try:
+        with pytest.raises(ValueError) as exc_info:
+            Settings()
+
+        error_msg = str(exc_info.value)
+        assert "GOOGLE_CLIENT_ID" in error_msg
+        assert "Google OAuth login will not work" in error_msg
+    finally:
+        # Restore original value
+        if original_google_client_id is not None:
+            os.environ['GOOGLE_CLIENT_ID'] = original_google_client_id
+
+
+def test_upload_exceeds_max_size(client: Session, test_db: Session, mock_storage):
+    mock_upload, mock_delete = mock_storage
+
+    user = User(
+        id=uuid.uuid4(),
+        email="size@example.com",
+        display_name="Size User",
+        is_active=True
+    )
+    test_db.add(user)
+    test_db.commit()
+
+    access_token = create_access_token(user.id)
+    oversized_bytes = b"%PDF-1.4\n" + (b"X" * (61 * 1024 * 1024))
+
+    with patch('app.modules.books.service.create_book') as mock_create_book:
+        response = client.post(
+            "/books",
+            files={"file": ("large.pdf", oversized_bytes, "application/pdf")},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert "File exceeds maximum allowed size" in response.text
+        mock_create_book.assert_not_called()
+
